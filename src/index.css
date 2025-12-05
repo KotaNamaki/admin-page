@@ -1,0 +1,20 @@
+/* Menghilangkan garis bawah pada link di datagrid */
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+/* Kustomisasi scrollbar agar lebih tipis */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
