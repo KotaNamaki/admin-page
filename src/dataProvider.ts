@@ -194,6 +194,7 @@ export const dataProvider: DataProvider = {
                 email: data.email,
                 password: data.password,
                 no_hp: data.no_hp,
+                role: data.kategori,
             };
             return httpClient(`${apiUrl}/auth/register`, {
                 method: 'POST',
