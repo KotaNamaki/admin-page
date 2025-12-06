@@ -297,6 +297,14 @@ export const dataProvider: DataProvider = {
         const endpoint = mapResource(resource);
         const data = params.data as any;
 
+        if (endpoint === 'orders') {
+            return httpClient(`${apiUrl}/orders/${params.id}`, { // URL Standar: /orders/1
+                method: 'PATCH',
+                body: JSON.stringify(data),
+                headers: new Headers({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+            }).then(({ json }) => ({ data: normalizeRecord(json) }));
+        }
+
         // Special-case: users
         if (endpoint === 'users') {
             const { id, ...rest } = data;
