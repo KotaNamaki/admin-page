@@ -16,6 +16,8 @@ import {LayananEdit} from "./resource/layanan/LayananEdit.tsx";
 import {LayananCreate} from "./resource/layanan/LayananCreate.tsx";
 import {UsersEdit} from "./resource/users/UsersEdit.tsx";
 import {UsersCreate} from "./resource/users/UsersCreate.tsx";
+import {OrderEdit} from "./resource/orders/OrderEdit.tsx";
+import {OrderShow} from "./resource/orders/OrderShow.tsx";
 
 // Import resource lain...
 
@@ -34,7 +36,12 @@ export const App = () => (
             edit={ProductEdit}
             create={ProductCreate}
         />
-        <Resource name="orders" list={OrderList} />
+        <Resource
+            name="orders"
+            list={OrderList}
+            edit={OrderEdit}
+            show={OrderShow}
+        />
         <Resource
             name="users"
             list={UsersList}
