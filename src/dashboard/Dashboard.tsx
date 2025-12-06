@@ -1,203 +1,182 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchUtils, Title, useDataProvider } from 'react-admin';
-import { Box, Grid, Card, CardContent, Typography, CircularProgress } from '@mui/material';
-import {
-    ResponsiveContainer,
-    LineChart,
-    Line,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ScatterChart,
-    Scatter,
-} from 'recharts';
-
-type CounterResponse = {
-    last7DaysOrders: number;
-    pendingOrders: number;
-    windowDays?: number;
-};
-
-type MonthBucket = { period: string; total: number };
+import { Box, Grid, Card, CardContent, Typography, CircularProgress, Table, TableBody, TableCell, TableHead, TableRow, TextField } from '@mui/material';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api.motodiv.store';
-
-const toISO = (d: Date) => d.toISOString();
-
-const startOfYear = (now = new Date()) => new Date(now.getFullYear(), 0, 1);
-const endOfYear = (now = new Date()) => new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-const daysAgo = (n: number, now = new Date()) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
 export const Dashboard = () => {
     const dataProvider = useDataProvider();
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
-    const [counters, setCounters] = useState<CounterResponse | null>(null);
-    const [monthly, setMonthly] = useState<MonthBucket[]>([]);
-    const [scatter, setScatter] = useState<{ x: Date; y: number }[]>([]);
+    // State Date Range
+    const [dateRange, setDateRange] = useState({
+        from: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
+        to: new Date().toISOString().slice(0, 10)
+    });
 
-    const rangeYear = useMemo(() => {
-        const now = new Date();
-        return {
-            from: startOfYear(now),
-            to: endOfYear(now),
-        };
-    }, []);
+    const [kpi, setKpi] = useState<any>({});
+    const [salesData, setSalesData] = useState<any[]>([]);
+    const [recentOrders, setRecentOrders] = useState<any[]>([]);
+    const [lowStock, setLowStock] = useState<any[]>([]);
 
-    const range30Days = useMemo(() => {
-        const to = new Date();
-        const from = daysAgo(30, to);
-        return { from, to };
-    }, []);
+    // --- 1. Helper Format Waktu (WHERE: Letakkan di sini, di dalam component) ---
+    const formatDateIndo = (date: string | Date) => {
+        if (!date) return '-';
+        return new Date(date).toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
 
     useEffect(() => {
-        let cancelled = false;
-        const run = async () => {
+        const fetchData = async () => {
             setLoading(true);
-            setError(null);
             try {
-                // 1) Counters (last 7 days + pending)
-                const countersRes = await fetchUtils.fetchJson(
-                    `${API_BASE}/analytics/orders/counters?lastDays=7`,
-                    { credentials: 'include' }
-                );
-                if (!cancelled) setCounters(countersRes.json as CounterResponse);
+                // 1. KPI & Status Distribution
+                const kpiRes = await fetchUtils.fetchJson(`${API_BASE}/analytics/orders/counters`, { credentials: 'include' });
+                setKpi(kpiRes.json);
 
-                // 2) Monthly sales buckets for current year
+                // 2. Sales Chart (Dynamic Date)
                 const salesRes = await fetchUtils.fetchJson(
-                    `${API_BASE}/analytics/sales/by-month?from=${
-                        toISO(rangeYear.from).slice(0, 10)
-                    }&to=${toISO(rangeYear.to).slice(0, 10)}`,
+                    `${API_BASE}/analytics/sales/by-month?from=${dateRange.from}&to=${dateRange.to}`,
                     { credentials: 'include' }
                 );
-                const buckets: MonthBucket[] = (salesRes.json && salesRes.json.buckets) || [];
-                if (!cancelled) setMonthly(buckets);
+                setSalesData(salesRes.json.buckets || []);
 
-                // 3) Scatter data: fetch orders last 30 days, map to points
-                type Order = { createdAt: string | number | Date; total_harga?: number | string };
-                const ordersRes = await dataProvider.getList('orders', {
-                    pagination: { page: 1, perPage: 1000 },
-                    sort: { field: 'createdAt', order: 'ASC' },
-                    filter: {
-                        createdAt_gte: toISO(range30Days.from),
-                        createdAt_lte: toISO(range30Days.to),
-                    },
+                // 3. Low Stock
+                const stockRes = await fetchUtils.fetchJson(`${API_BASE}/analytics/inventory/low-stock`, { credentials: 'include' });
+                setLowStock(stockRes.json || []);
+
+                // 4. Recent Orders (via DataProvider)
+                const orders = await dataProvider.getList('orders', {
+                    pagination: { page: 1, perPage: 5 },
+                    sort: { field: 'created_at', order: 'DESC' },
+                    filter: {}
                 });
-                const points = (ordersRes.data as Order[]).map(o => ({
-                    x: new Date(o.createdAt),
-                    y: Number(o.total_harga ?? 0) || 0,
-                }));
-                if (!cancelled) setScatter(points);
-            } catch (e: unknown) {
-                const message = e instanceof Error ? e.message : String(e);
-                if (!cancelled) setError(message || 'Failed to load dashboard data');
+                setRecentOrders(orders.data);
+
+            } catch (error) {
+                console.error(error);
             } finally {
-                if (!cancelled) setLoading(false);
+                setLoading(false);
             }
         };
-        run();
-        return () => {
-            cancelled = true;
-        };
-    }, [dataProvider, rangeYear.from, rangeYear.to, range30Days.from, range30Days.to]);
+        fetchData();
+    }, [dataProvider, dateRange]);
 
-    // Recharts tooltip formatters with explicit types (no `any`)
-    const tooltipFormatter = (val: number | string, name: string): [number | string, string] => [val, name];
-    const tooltipLabelFormatter = (label: number | string): string => {
-        const n = typeof label === 'number' ? label : Number(label);
-        return Number.isFinite(n) ? new Date(n).toLocaleString() : String(label);
-    };
+    if (loading) return <CircularProgress />;
 
     return (
         <Box p={2}>
             <Title title="Dashboard" />
-            {loading ? (
-                <Box display="flex" justifyContent="center" py={6}>
-                    <CircularProgress />
-                </Box>
-            ) : error ? (
-                <Card>
-                    <CardContent>
-                        <Typography color="error">{error}</Typography>
-                    </CardContent>
-                </Card>
-            ) : (
-                <Grid container spacing={2}>
-                    {/* KPIs */}
-                    <Grid item xs={12} md={6} lg={3}>
-                        <Card>
-                            <CardContent>
-                                <Typography variant="overline">Orders (last 7 days)</Typography>
-                                <Typography variant="h4">{counters?.last7DaysOrders ?? 0}</Typography>
-                            </CardContent>
-                        </Card>
-                    </Grid>
-                    <Grid item xs={12} md={6} lg={3}>
-                        <Card>
-                            <CardContent>
-                                <Typography variant="overline">Pending Orders</Typography>
-                                <Typography variant="h4">{counters?.pendingOrders ?? 0}</Typography>
-                            </CardContent>
-                        </Card>
-                    </Grid>
 
-                    {/* Line Chart - Monthly Sales */}
-                    <Grid item xs={12} lg={8}>
-                        <Card>
-                            <CardContent>
-                                <Typography variant="h6" gutterBottom>
-                                    Monthly Sales (IDR)
-                                </Typography>
-                                <Box height={320}>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={monthly} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
-                                            <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis dataKey="period" />
-                                            <YAxis />
-                                            <Tooltip />
-                                            <Line type="monotone" dataKey="total" stroke="#1976d2" strokeWidth={2} dot={false} />
-                                        </LineChart>
-                                    </ResponsiveContainer>
-                                </Box>
-                            </CardContent>
-                        </Card>
-                    </Grid>
+            {/* Date Picker */}
+            <Box mb={2} display="flex" gap={2}>
+                <TextField label="Dari" type="date" value={dateRange.from} onChange={(e) => setDateRange({...dateRange, from: e.target.value})} InputLabelProps={{ shrink: true }} />
+                <TextField label="Sampai" type="date" value={dateRange.to} onChange={(e) => setDateRange({...dateRange, to: e.target.value})} InputLabelProps={{ shrink: true }} />
+            </Box>
 
-                    {/* Scatter - Order Value over Time */}
-                    <Grid item xs={12} lg={4}>
-                        <Card>
-                            <CardContent>
-                                <Typography variant="h6" gutterBottom>
-                                    Orders (last 30 days)
-                                </Typography>
-                                <Box height={320}>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <ScatterChart margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
-                                            <CartesianGrid />
-                                            <XAxis
-                                                dataKey="x"
-                                                domain={[range30Days.from.getTime(), range30Days.to.getTime()]}
-                                                name="Date"
-                                                tickFormatter={(v: number) => new Date(v).toLocaleDateString()}
-                                                type="number"
-                                            />
-                                            <YAxis dataKey="y" name="Total (IDR)" />
-                                            <Tooltip
-                                                cursor={{ strokeDasharray: '3 3' }}
-                                                formatter={tooltipFormatter}
-                                                labelFormatter={tooltipLabelFormatter}
-                                            />
-                                            <Scatter data={scatter.map(p => ({ ...p, x: p.x.getTime() }))} fill="#9c27b0" />
-                                        </ScatterChart>
-                                    </ResponsiveContainer>
-                                </Box>
-                            </CardContent>
-                        </Card>
-                    </Grid>
+            <Grid container spacing={2}>
+                {/* KPI Cards */}
+                <Grid item xs={12} sm={6} md={3}>
+                    <Card><CardContent><Typography variant="overline">Order 7 Hari Terakhir</Typography><Typography variant="h4">{kpi.last7DaysOrders}</Typography></CardContent></Card>
                 </Grid>
-            )}
+                <Grid item xs={12} sm={6} md={3}>
+                    <Card><CardContent><Typography variant="overline">Pesanan Pending</Typography><Typography variant="h4">{kpi.pendingOrders}</Typography></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                    <Card><CardContent><Typography variant="overline">Total Customer</Typography><Typography variant="h4">{kpi.totalCustomers}</Typography></CardContent></Card>
+                </Grid>
+
+                {/* Charts Row */}
+                <Grid item xs={12} md={8}>
+                    <Card sx={{ height: 400 }}>
+                        <CardContent>
+                            <Typography variant="h6">Tren Penjualan</Typography>
+                            <ResponsiveContainer width="100%" height={320}>
+                                <LineChart data={salesData}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    {/* --- 2. Format di XAxis Chart --- */}
+                                    <XAxis
+                                        dataKey="period"
+                                        tickFormatter={(val) => new Date(val).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                                    />
+                                    <YAxis />
+                                    {/* --- 3. Format di Tooltip Chart --- */}
+                                    <Tooltip labelFormatter={(val) => formatDateIndo(val)} />
+                                    <Line type="monotone" dataKey="total" stroke="#8884d8" />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                    <Card sx={{ height: 400 }}>
+                        <CardContent>
+                            <Typography variant="h6">Status Pesanan</Typography>
+                            <ResponsiveContainer width="100%" height={320}>
+                                <PieChart>
+                                    <Pie data={kpi.statusDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                                        {kpi.statusDistribution?.map((entry: any, index: number) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip />
+                                    <Legend />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+                </Grid>
+
+                {/* Bottom Row: Tables */}
+                <Grid item xs={12} md={6}>
+                    <Card>
+                        <CardContent>
+                            <Typography variant="h6">Pesanan Terbaru</Typography>
+                            <Table size="small">
+                                <TableHead><TableRow><TableCell>Tanggal</TableCell><TableCell>ID</TableCell><TableCell>Total</TableCell><TableCell>Status</TableCell></TableRow></TableHead>
+                                <TableBody>
+                                    {recentOrders.map(o => (
+                                        <TableRow key={o.id}>
+                                            {/* --- 4. Format di Tabel --- */}
+                                            <TableCell>{formatDateIndo(o.created_at)}</TableCell>
+                                            <TableCell>{o.id}</TableCell>
+                                            <TableCell>Rp {Number(o.total_harga).toLocaleString('id-ID')}</TableCell>
+                                            <TableCell>{o.status_pesanan}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                    <Card>
+                        <CardContent>
+                            <Typography variant="h6" color="error">Stok Menipis</Typography>
+                            <Table size="small">
+                                <TableHead><TableRow><TableCell>Produk</TableCell><TableCell>Stok</TableCell></TableRow></TableHead>
+                                <TableBody>
+                                    {lowStock.map((p: any) => (
+                                        <TableRow key={p.id}>
+                                            <TableCell>{p.nama_produk}</TableCell>
+                                            <TableCell sx={{ color: 'red', fontWeight: 'bold' }}>{p.stok}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </Grid>
+            </Grid>
         </Box>
     );
 };
