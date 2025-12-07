@@ -1,7 +1,10 @@
-import { List, Datagrid, TextField, EmailField} from 'react-admin';
+import {List, Datagrid, TextField, EmailField, TextInput} from 'react-admin';
 
+const UserFilters = [
+    <TextInput source="q" label="Search" alwaysOn/>
+]
 export const UsersList = () => (
-    <List>
+    <List filters={UserFilters} sort={{field: 'id', order:'DESC'}}>
         <Datagrid rowClick="edit">
             <TextField source="id" />
             <TextField source="nama" />

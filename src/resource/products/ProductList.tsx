@@ -14,15 +14,17 @@ const productFilters = [
 ];
 
 export const ProductList = () => (
-    <List filters={productFilters}>
+    <List filters={productFilters} sort={{ field: 'nama', order: 'ASC' }}>
         <Datagrid rowClick="edit">
+            {/* 1. Nama, Kategori, Harga otomatis bisa di-sort (klik header) */}
             <TextField source="nama" />
             <TextField source="kategori" />
             <NumberField source="harga" options={{ style: 'currency', currency: 'IDR' }} />
 
-            {/* LOGIKA BARU: Peringatan Stok Rendah */}
+            {/* 2. Stok butuh 'sortBy' agar header bisa diklik */}
             <FunctionField
                 label="Stok"
+                sortBy="stok"  // <--- Tambahkan ini
                 render={(record: any) => (
                     <span style={{
                         color: record.stok < 5 ? '#d32f2f' : 'inherit',
